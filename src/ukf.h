@@ -94,6 +94,30 @@ class UKF {
 
   // Sigma point spreading parameter
   double lambda_;
+
+  // enum for state matrix of vehicle
+  enum kState{
+    px,
+    py,
+    v,
+    yaw,
+    yawd,
+    nu_a,
+    nu_yawdd
+  };
+
+  // enum for lidar measurement points
+  enum kLidar{
+    x,
+    y
+  };
+
+  // enum for radar measurement points
+  enum kRadar{
+    r,
+    phi,
+    rd
+  };
 };
 
 #endif  // UKF_H
