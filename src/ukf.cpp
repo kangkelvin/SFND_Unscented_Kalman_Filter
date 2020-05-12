@@ -55,6 +55,16 @@ UKF::UKF() {
   is_initialized_ = false;
   n_x_ = 5;
   n_aug_ = 7;
+  n_sig_ = 2 * n_aug_ + 1;
+  lambda_ = 3 - n_aug_;
+  Xsig_pred_ = MatrixXd(n_x_, n_sig_);
+
+  weights_ = VectorXd(n_sig_);
+  weights_(0) = lambda_ / (lambda_ + n_aug_);
+  double weightNonZero = 1 / (2 * (lambda_ + n_aug_));
+  for (int i = 1; i < weights_.size(); ++i) {
+    weights_(i) = weightNonZero;
+  }
 }
 
 UKF::~UKF() {}
@@ -111,6 +121,62 @@ void UKF::Prediction(double dt) {
    * Modify the state vector, x_. Predict sigma points, the state,
    * and the state covariance matrix.
    */
+
+  /////////////////////////// Find Sigma Points ///////////////////////////
+
+  VectorXd x_aug(n_aug_);
+  x_aug.head(n_x_) = x_;
+
+  MatrixXd P_aug(n_aug_, n_aug_);
+  P_aug.topLeftCorner(n_x_, n_x_) = P_;
+  P_aug(n_x_, n_x_) = std_a_ * std_a_;
+  P_aug(n_x_ + 1, n_x_ + 1) = std_yawdd_ * std_yawdd_;
+
+  MatrixXd P_aug_sqrt = P_aug.llt().matrixL();
+
+  MatrixXd Xsig_aug(n_aug_, n_sig_);
+  Xsig_aug.col(0) = x_aug;
+  for (int i = 0; i < n_aug_; ++i) {
+    VectorXd secondTerm = sqrt(lambda_ + n_aug_) * P_aug_sqrt.col(i);
+    Xsig_aug.col(i + 1) = x_aug + secondTerm;
+    Xsig_aug.col(i + n_aug_ + 1) = x_aug - secondTerm;
+  }
+
+  /////////////////////////// Predict Sigma Points ///////////////////////////
+  for (int i = 0; i < n_sig_; ++i) {
+    double px = Xsig_aug(kState::px, i);
+    double py = Xsig_aug(kState::py, i);
+    double v = Xsig_aug(kState::v, i);
+    double yaw = Xsig_aug(kState::yaw, i);
+    double yawd = Xsig_aug(kState::yawd, i);
+    double nu_a = Xsig_aug(kState::nu_a, i);
+    double nu_yawdd = Xsig_aug(kState::nu_yawdd, i);
+
+    // incremental state change vector
+    VectorXd delta = VectorXd(n_x_);
+
+    // process noise vector
+    VectorXd nu = VectorXd(n_x_);
+
+    nu(kState::px) = 0.5 * dt * dt * cos(yaw) * nu_a;
+    nu(kState::py) = 0.5 * dt * dt * sin(yaw) * nu_a;
+    nu(kState::v) = dt * nu_a;
+    nu(kState::yaw) = 0.5 * dt * dt * nu_yawdd;
+    nu(kState::yawd) = dt * nu_yawdd;
+
+    if (fabs(yawd) < 0.00001) {
+      delta(kState::px) = v * cos(yaw) * dt;
+      delta(kState::py) = v * sin(yaw) * dt;
+    } else {
+      delta(kState::px) = v / yawd * (sin(yaw + yawd * dt) - sin(yaw));
+      delta(kState::py) = v / yawd * (-cos(yaw + yawd * dt) + cos(yaw));
+    }
+    delta(kState::v) = 0;
+    delta(kState::yaw) = yawd * dt;
+    delta(kState::yawd) = 0;
+
+    Xsig_pred_.col(i) += delta + nu;
+  }
 }
 
 void UKF::UpdateLidar(MeasurementPackage &meas_package) {

@@ -100,6 +100,9 @@ class UKF {
   // Augmented state dimension
   int n_aug_;
 
+  // Sigma points dimension
+  int n_sig_;
+
   // Sigma point spreading parameter
   double lambda_;
 
