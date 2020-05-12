@@ -59,7 +59,7 @@ UKF::UKF() {
 
 UKF::~UKF() {}
 
-void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
+void UKF::ProcessMeasurement(MeasurementPackage &meas_package) {
   /**
    * TODO: Complete this function! Make sure you switch between lidar and radar
    * measurements.
@@ -72,14 +72,17 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 
   // process first measurement
   if (!is_initialized_) {
-    if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
-      x_(kState::px) = meas_package.raw_measurements_(kLidar::x);
-      x_(kState::py) = meas_package.raw_measurements_(kLidar::y);
-    } else if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
-      double r = meas_package.raw_measurements_(kRadar::r);
-      double phi = meas_package.raw_measurements_(kRadar::phi);
-      x_(kState::px) = r * cos(phi);
-      x_(kState::py) = r * sin(phi);
+    switch (meas_package.sensor_type_) {
+      case MeasurementPackage::LASER:
+        x_(kState::px) = meas_package.raw_measurements_(kLidar::x);
+        x_(kState::py) = meas_package.raw_measurements_(kLidar::y);
+        break;
+      case MeasurementPackage::RADAR:
+        double r = meas_package.raw_measurements_(kRadar::r);
+        double phi = meas_package.raw_measurements_(kRadar::phi);
+        x_(kState::px) = r * cos(phi);
+        x_(kState::py) = r * sin(phi);
+        break;
     }
     x_(kState::v) = 0;
     x_(kState::yaw) = 0;
@@ -87,6 +90,18 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     time_us_ = meas_package.timestamp_;
     is_initialized_ = true;
     return;
+  }
+
+  double dt = meas_package.timestamp_ - time_us_;
+  this->Prediction(dt);
+
+  switch (meas_package.sensor_type_) {
+    case MeasurementPackage::LASER:
+      this->UpdateLidar(meas_package);
+      break;
+    case MeasurementPackage::RADAR:
+      this->UpdateRadar(meas_package);
+      break;
   }
 }
 
@@ -98,7 +113,7 @@ void UKF::Prediction(double dt) {
    */
 }
 
-void UKF::UpdateLidar(MeasurementPackage meas_package) {
+void UKF::UpdateLidar(MeasurementPackage &meas_package) {
   /**
    * TODO: Complete this function! Use lidar data to update the belief
    * about the object's position. Modify the state vector, x_, and
@@ -107,7 +122,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
    */
 }
 
-void UKF::UpdateRadar(MeasurementPackage meas_package) {
+void UKF::UpdateRadar(MeasurementPackage &meas_package) {
   /**
    * TODO: Complete this function! Use radar data to update the belief
    * about the object's position. Modify the state vector, x_, and
