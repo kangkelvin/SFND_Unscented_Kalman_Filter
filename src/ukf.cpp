@@ -69,6 +69,25 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
    * 1. predict state step (agnostic of sensor type)
    * 2. update measurement and state (lidar / radar)
    */
+
+  // process first measurement
+  if (!is_initialized_) {
+    if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
+      x_(kState::px) = meas_package.raw_measurements_(kLidar::x);
+      x_(kState::py) = meas_package.raw_measurements_(kLidar::y);
+    } else if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+      double r = meas_package.raw_measurements_(kRadar::r);
+      double phi = meas_package.raw_measurements_(kRadar::phi);
+      x_(kState::px) = r * cos(phi);
+      x_(kState::py) = r * sin(phi);
+    }
+    x_(kState::v) = 0;
+    x_(kState::yaw) = 0;
+    x_(kState::yawd) = 0;
+    time_us_ = meas_package.timestamp_;
+    is_initialized_ = true;
+    return;
+  }
 }
 
 void UKF::Prediction(double dt) {
@@ -95,4 +114,9 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
    * covariance, P_.
    * You can also calculate the radar NIS, if desired.
    */
+}
+
+void UKF::phiGuard(double &phi) {
+  while (phi > M_PI) phi -= M_PI;
+  while (phi < -1 * M_PI) phi += M_PI;
 }

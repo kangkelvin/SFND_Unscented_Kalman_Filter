@@ -1,6 +1,8 @@
 #ifndef UKF_H
 #define UKF_H
 
+#include <cmath>
+
 #include "Eigen/Dense"
 #include "measurement_package.h"
 
@@ -40,6 +42,12 @@ class UKF {
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+
+  /**
+   * prevents yaw angle from going beyong -pi to pi
+   * @param phi is the yaw angle that you want to restrict
+   */
+  void phiGuard(double &phi);
 
   // initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;
