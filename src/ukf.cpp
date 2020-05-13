@@ -21,13 +21,13 @@ UKF::UKF() {
 
   // initial covariance matrix
   P_ = MatrixXd::Identity(5, 5);
-  P_ /= 10;
+  P_ /= 100;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
   std_a_ = 10;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 2;
+  std_yawdd_ = 3;
 
   /**
    * DO NOT MODIFY measurement noise values below.
@@ -112,7 +112,8 @@ void UKF::ProcessMeasurement(MeasurementPackage &meas_package) {
     is_initialized_ = true;
     return;
   }
-
+  
+  // process rest of measurements
   switch (meas_package.sensor_type_) {
     case MeasurementPackage::SensorType::LASER:
       if (use_laser_) {
@@ -204,6 +205,7 @@ void UKF::Prediction(double dt) {
 }
 
 void UKF::UpdateLidar(MeasurementPackage &meas_package) {
+  /////////////////////// Find predicted Z measurement /////////////////////
   int n_z = meas_package.raw_measurements_.size();
 
   // create matrix for sigma points in measurement space
@@ -229,6 +231,7 @@ void UKF::UpdateLidar(MeasurementPackage &meas_package) {
     z_pred += weights_(i) * Zsig.col(i);
   }
 
+  /////////////////// Perform update of predicted and actual ///////////////////
   // calculate innovation covariance matrix S
   for (int i = 0; i < n_sig_; ++i) {
     VectorXd z_diff = Zsig.col(i) - z_pred;
@@ -254,16 +257,19 @@ void UKF::UpdateLidar(MeasurementPackage &meas_package) {
   // calculate Kalman gain K;
   MatrixXd K = Tc * S.inverse();
 
+  // store input sensor data
   VectorXd z = meas_package.raw_measurements_;
 
   // update state mean and covariance matrix
   x_ += K * (z - z_pred);
   P_ -= K * S * K.transpose();
 
+  //////////////// calculate NIS for performance measurement /////////////////
   lidarNis.emplace_back(calcNormInnovSquare(z, z_pred, S));
 }
 
 void UKF::UpdateRadar(MeasurementPackage &meas_package) {
+  /////////////////////// Find predicted Z measurement /////////////////////
   int n_z = meas_package.raw_measurements_.size();
 
   // create matrix for sigma points in measurement space
@@ -294,8 +300,7 @@ void UKF::UpdateRadar(MeasurementPackage &meas_package) {
     z_pred += weights_(i) * Zsig.col(i);
   }
 
-  MatrixPhiGuard(z_pred, kRadar::phi);
-
+  /////////////////// Perform update of predicted and actual ///////////////////
   // calculate innovation covariance matrix S
   for (int i = 0; i < n_sig_; ++i) {
     VectorXd z_diff = Zsig.col(i) - z_pred;
@@ -325,6 +330,7 @@ void UKF::UpdateRadar(MeasurementPackage &meas_package) {
   // calculate Kalman gain K;
   MatrixXd K = Tc * S.inverse();
 
+  // store input sensor data
   VectorXd z = meas_package.raw_measurements_;
 
   // update state mean and covariance matrix
@@ -333,6 +339,7 @@ void UKF::UpdateRadar(MeasurementPackage &meas_package) {
   x_ += K * z_diff;
   P_ -= K * S * K.transpose();
 
+  //////////////// calculate NIS for performance measurement /////////////////
   radarNis.emplace_back(calcNormInnovSquare(z, z_pred, S));
 }
 
