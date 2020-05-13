@@ -21,12 +21,13 @@ UKF::UKF() {
 
   // initial covariance matrix
   P_ = MatrixXd::Identity(5, 5);
+  P_ /= 10;
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 15;
+  std_a_ = 10;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 1;
+  std_yawdd_ = 2;
 
   /**
    * DO NOT MODIFY measurement noise values below.
@@ -66,9 +67,26 @@ UKF::UKF() {
   for (int i = 1; i < weights_.size(); ++i) {
     weights_(i) = weightNonZero;
   }
+
+  radarNisLimit = 7.815;
+  lidarNisLimit = 5.991;
 }
 
-UKF::~UKF() {}
+UKF::~UKF() {
+  int overshootCount = 0;
+  for (auto value : lidarNis) {
+    if (value > lidarNisLimit) overshootCount++;
+  }
+  std::cout << "lidar NIS ratio: " << overshootCount * 1.0 / lidarNis.size()
+            << std::endl;
+
+  overshootCount = 0;
+  for (auto value : radarNis) {
+    if (value > radarNisLimit) overshootCount++;
+  }
+  std::cout << "radar NIS ratio: " << overshootCount * 1.0 / radarNis.size()
+            << std::endl;
+}
 
 void UKF::ProcessMeasurement(MeasurementPackage &meas_package) {
   /**
@@ -87,15 +105,17 @@ void UKF::ProcessMeasurement(MeasurementPackage &meas_package) {
       case MeasurementPackage::SensorType::LASER:
         x_(kState::px) = meas_package.raw_measurements_(kLidar::x);
         x_(kState::py) = meas_package.raw_measurements_(kLidar::y);
+        x_(kState::v) = 0;
         break;
       case MeasurementPackage::SensorType::RADAR:
         double r = meas_package.raw_measurements_(kRadar::r);
         double phi = meas_package.raw_measurements_(kRadar::phi);
+        double rd = meas_package.raw_measurements_(kRadar::rd);
         x_(kState::px) = r * cos(phi);
         x_(kState::py) = r * sin(phi);
+        x_(kState::v) = rd * cos(phi);
         break;
     }
-    x_(kState::v) = 0;
     x_(kState::yaw) = 0;
     x_(kState::yawd) = 0;
     time_us_ = meas_package.timestamp_;
@@ -150,7 +170,6 @@ void UKF::Prediction(double dt) {
   }
 
   // MatrixPhiGuard(Xsig_aug, kState::yaw);
-  std::cout << "xsig_aug:\n" << Xsig_aug << "\n\n";
 
   /////////////////////////// Predict Sigma Points ///////////////////////////
   for (int i = 0; i < n_sig_; ++i) {
@@ -272,6 +291,12 @@ void UKF::UpdateLidar(MeasurementPackage &meas_package) {
   // update state mean and covariance matrix
   x_ += K * (z - z_pred);
   P_ -= K * S * K.transpose();
+
+  std::cout << "z:\n" << z << "\n\n";
+  std::cout << "z_pred:\n" << z_pred << "\n\n";
+  std::cout << "updated x_:\n" << x_ << "\n\n";
+
+  lidarNis.emplace_back(calcNormInnovSquare(z, z_pred, S));
 }
 
 void UKF::UpdateRadar(MeasurementPackage &meas_package) {
@@ -343,17 +368,19 @@ void UKF::UpdateRadar(MeasurementPackage &meas_package) {
   MatrixXd K = Tc * S.inverse();
 
   VectorXd z = meas_package.raw_measurements_;
-  MatrixPhiGuard(z, kRadar::phi);
 
   // update state mean and covariance matrix
-  x_ += K * (z - z_pred);
+  VectorXd z_diff = z - z_pred;
+  MatrixPhiGuard(z_diff, kRadar::phi);
+  x_ += K * z_diff;
   P_ -= K * S * K.transpose();
 
-  std::cout << "K:\n" << K << "\n\n";
+  // std::cout << "K:\n" << K << "\n\n";
   std::cout << "z:\n" << z << "\n\n";
   std::cout << "z_pred:\n" << z_pred << "\n\n";
   std::cout << "updated x_:\n" << x_ << "\n\n";
-  std::cout << std::endl;
+
+  radarNis.emplace_back(calcNormInnovSquare(z, z_pred, S));
 }
 
 void UKF::phiGuard(double &phi) {
@@ -373,3 +400,9 @@ void UKF::MatrixPhiGuard(MatrixXd &mtx, int rowPos) {
 }
 
 void UKF::MatrixPhiGuard(VectorXd &vec, int rowPos) { phiGuard(vec(rowPos)); }
+
+double UKF::calcNormInnovSquare(VectorXd &z, VectorXd &z_pred, MatrixXd &S) {
+  VectorXd z_diff = z - z_pred;
+  double e = z_diff.transpose() * S.inverse() * z_diff;
+  return e;
+}
