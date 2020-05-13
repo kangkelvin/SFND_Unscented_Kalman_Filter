@@ -2,6 +2,7 @@
 #define UKF_H
 
 #include <cmath>
+#include <vector>
 
 #include "Eigen/Dense"
 #include "measurement_package.h"
@@ -55,8 +56,14 @@ class UKF {
    */
   void MatrixPhiGuard(Eigen::MatrixXd &mtx, int rowPos);
   void MatrixPhiGuard(Eigen::VectorXd &vec, int rowPos);
-  int smallYawd = 0;
-  int normalYawd = 0;
+
+  /**
+   * calculate Normalised Innovation Square to measure KF performance
+   */
+  double calcNormInnovSquare(Eigen::VectorXd &z, Eigen::VectorXd &z_pred,
+                             Eigen::MatrixXd &S);
+  std::vector<double> lidarNis, radarNis;
+  double radarNisLimit, lidarNisLimit;
 
   // initially set to false, set to true in first call of ProcessMeasurement
   bool is_initialized_;

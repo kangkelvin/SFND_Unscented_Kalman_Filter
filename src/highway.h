@@ -138,7 +138,7 @@ class Highway {
         tools.estimations.push_back(estimate);
       }
     }
-                         std::cout << "\n##################\n";
+    std::cout << "\n##################\n";
 
     viewer->addText("Accuracy - RMSE:", 30, 300, 20, 1, 1, 1, "rmse");
     VectorXd rmse = tools.CalculateRMSE(tools.estimations, tools.ground_truth);

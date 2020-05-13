@@ -89,16 +89,6 @@ UKF::~UKF() {
 }
 
 void UKF::ProcessMeasurement(MeasurementPackage &meas_package) {
-  /**
-   * TODO: Complete this function! Make sure you switch between lidar and radar
-   * measurements.
-   *
-   * This is the only function being called at the main function. Hence this
-   * function will contain the
-   * 1. predict state step (agnostic of sensor type)
-   * 2. update measurement and state (lidar / radar)
-   */
-
   // process first measurement
   if (!is_initialized_) {
     switch (meas_package.sensor_type_) {
@@ -144,12 +134,6 @@ void UKF::ProcessMeasurement(MeasurementPackage &meas_package) {
 }
 
 void UKF::Prediction(double dt) {
-  /**
-   * TODO: Complete this function! Estimate the object's location.
-   * Modify the state vector, x_. Predict sigma points, the state,
-   * and the state covariance matrix.
-   */
-
   /////////////////////////// Find Sigma Points ///////////////////////////
   VectorXd x_aug = VectorXd::Zero(n_aug_);
   x_aug.head(n_x_) = x_;
@@ -168,8 +152,6 @@ void UKF::Prediction(double dt) {
     Xsig_aug.col(i + 1) = x_aug + secondTerm;
     Xsig_aug.col(i + n_aug_ + 1) = x_aug - secondTerm;
   }
-
-  // MatrixPhiGuard(Xsig_aug, kState::yaw);
 
   /////////////////////////// Predict Sigma Points ///////////////////////////
   for (int i = 0; i < n_sig_; ++i) {
@@ -207,8 +189,6 @@ void UKF::Prediction(double dt) {
     Xsig_pred_.col(i) = Xsig_aug.block(0, i, n_x_, 1) + delta + nu;
   }
 
-  // MatrixPhiGuard(Xsig_pred_, kState::yaw);
-
   /////////////////////// Find Sigma mean and covariance /////////////////////
   x_.setZero();
   P_.setZero();
@@ -216,26 +196,14 @@ void UKF::Prediction(double dt) {
   for (int i = 0; i < n_sig_; ++i) {
     x_ += weights_(i) * Xsig_pred_.col(i);
   }
-
-  std::cout << "X_pred:\n" << x_ << "\n\n";
-
-  // MatrixPhiGuard(x_, kState::yaw);
-
   for (int i = 0; i < n_sig_; ++i) {
     VectorXd delta_x = Xsig_pred_.col(i) - x_;
     phiGuard(delta_x(kState::yaw));
     P_ += weights_(i) * delta_x * delta_x.transpose();
   }
-  std::cout << "P_pred:\n" << P_ << "\n\n";
 }
 
 void UKF::UpdateLidar(MeasurementPackage &meas_package) {
-  /**
-   * TODO: Complete this function! Use lidar data to update the belief
-   * about the object's position. Modify the state vector, x_, and
-   * covariance, P_.
-   * You can also calculate the lidar NIS, if desired.
-   */
   int n_z = meas_package.raw_measurements_.size();
 
   // create matrix for sigma points in measurement space
@@ -292,20 +260,10 @@ void UKF::UpdateLidar(MeasurementPackage &meas_package) {
   x_ += K * (z - z_pred);
   P_ -= K * S * K.transpose();
 
-  std::cout << "z:\n" << z << "\n\n";
-  std::cout << "z_pred:\n" << z_pred << "\n\n";
-  std::cout << "updated x_:\n" << x_ << "\n\n";
-
   lidarNis.emplace_back(calcNormInnovSquare(z, z_pred, S));
 }
 
 void UKF::UpdateRadar(MeasurementPackage &meas_package) {
-  /**
-   * TODO: Complete this function! Use radar data to update the belief
-   * about the object's position. Modify the state vector, x_, and
-   * covariance, P_.
-   * You can also calculate the radar NIS, if desired.
-   */
   int n_z = meas_package.raw_measurements_.size();
 
   // create matrix for sigma points in measurement space
@@ -375,28 +333,16 @@ void UKF::UpdateRadar(MeasurementPackage &meas_package) {
   x_ += K * z_diff;
   P_ -= K * S * K.transpose();
 
-  // std::cout << "K:\n" << K << "\n\n";
-  std::cout << "z:\n" << z << "\n\n";
-  std::cout << "z_pred:\n" << z_pred << "\n\n";
-  std::cout << "updated x_:\n" << x_ << "\n\n";
-
   radarNis.emplace_back(calcNormInnovSquare(z, z_pred, S));
 }
 
 void UKF::phiGuard(double &phi) {
-  while (phi > M_PI) {
-    phi -= 2.0 * M_PI;
-  }
-
-  while (phi < -1 * M_PI) {
-    phi += 2.0 * M_PI;
-  }
+  while (phi > M_PI) phi -= 2.0 * M_PI;
+  while (phi < -1 * M_PI) phi += 2.0 * M_PI;
 }
 
 void UKF::MatrixPhiGuard(MatrixXd &mtx, int rowPos) {
-  for (int i = 0; i < mtx.cols(); ++i) {
-    phiGuard(mtx(rowPos, i));
-  }
+  for (int i = 0; i < mtx.cols(); ++i) phiGuard(mtx(rowPos, i));
 }
 
 void UKF::MatrixPhiGuard(VectorXd &vec, int rowPos) { phiGuard(vec(rowPos)); }

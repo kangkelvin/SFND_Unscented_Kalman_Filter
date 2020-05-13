@@ -2,7 +2,6 @@
 #include <iostream>
 #include <random>
 
-
 using namespace std;
 using std::vector;
 
