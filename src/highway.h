@@ -1,6 +1,6 @@
 /* \author Aaron Brown */
 // Handle logic for creating traffic on highway and animating it
-
+#include <iostream>
 #include "render/render.h"
 #include "sensors/lidar.h"
 #include "tools.h"
@@ -138,6 +138,8 @@ class Highway {
         tools.estimations.push_back(estimate);
       }
     }
+                         std::cout << "\n##################\n";
+
     viewer->addText("Accuracy - RMSE:", 30, 300, 20, 1, 1, 1, "rmse");
     VectorXd rmse = tools.CalculateRMSE(tools.estimations, tools.ground_truth);
     viewer->addText(" X: " + std::to_string(rmse[0]), 30, 275, 20, 1, 1, 1,

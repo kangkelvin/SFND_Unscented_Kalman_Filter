@@ -11,7 +11,7 @@ using Eigen::VectorXd;
  */
 UKF::UKF() {
   // if this is false, laser measurements will be ignored (except during init)
-  use_laser_ = true;
+  use_laser_ = false;
 
   // if this is false, radar measurements will be ignored (except during init)
   use_radar_ = true;
@@ -84,13 +84,14 @@ void UKF::ProcessMeasurement(MeasurementPackage &meas_package) {
   // process first measurement
   if (!is_initialized_) {
     switch (meas_package.sensor_type_) {
-      case MeasurementPackage::LASER:
+      case MeasurementPackage::SensorType::LASER:
         x_(kState::px) = meas_package.raw_measurements_(kLidar::x);
         x_(kState::py) = meas_package.raw_measurements_(kLidar::y);
         break;
-      case MeasurementPackage::RADAR:
+      case MeasurementPackage::SensorType::RADAR:
         double r = meas_package.raw_measurements_(kRadar::r);
         double phi = meas_package.raw_measurements_(kRadar::phi);
+        phiGuard(phi);
         x_(kState::px) = r * cos(phi);
         x_(kState::py) = r * sin(phi);
         break;
@@ -103,16 +104,22 @@ void UKF::ProcessMeasurement(MeasurementPackage &meas_package) {
     return;
   }
 
-  double dt = (double)(meas_package.timestamp_ - time_us_) / 1000000.0;
-  time_us_ = meas_package.timestamp_;
-  this->Prediction(dt);
-
   switch (meas_package.sensor_type_) {
-    case MeasurementPackage::LASER:
-      this->UpdateLidar(meas_package);
+    case MeasurementPackage::SensorType::LASER:
+      if (use_laser_) {
+        double dt = (double)(meas_package.timestamp_ - time_us_) / 1000000.0;
+        time_us_ = meas_package.timestamp_;
+        this->Prediction(dt);
+        this->UpdateLidar(meas_package);
+      }
       break;
-    case MeasurementPackage::RADAR:
-      this->UpdateRadar(meas_package);
+    case MeasurementPackage::SensorType::RADAR:
+      if (use_radar_) {
+        double dt = (double)(meas_package.timestamp_ - time_us_) / 1000000.0;
+        time_us_ = meas_package.timestamp_;
+        this->Prediction(dt);
+        this->UpdateRadar(meas_package);
+      }
       break;
   }
 }
@@ -142,6 +149,9 @@ void UKF::Prediction(double dt) {
     Xsig_aug.col(i + 1) = x_aug + secondTerm;
     Xsig_aug.col(i + n_aug_ + 1) = x_aug - secondTerm;
   }
+
+  MatrixPhiGuard(Xsig_aug, kState::yaw);
+  std::cout << "xsig_aug:\n" << Xsig_aug << "\n\n";
 
   /////////////////////////// Predict Sigma Points ///////////////////////////
   for (int i = 0; i < n_sig_; ++i) {
@@ -179,19 +189,27 @@ void UKF::Prediction(double dt) {
     Xsig_pred_.col(i) = Xsig_aug.block(0, i, n_x_, 1) + delta + nu;
   }
 
+  MatrixPhiGuard(Xsig_pred_, kState::yaw);
+
   /////////////////////// Find Sigma mean and covariance /////////////////////
-  x_pred_ = VectorXd::Zero(n_x_);
-  P_pred_ = MatrixXd::Zero(n_x_, n_x_);
+  x_.setZero();
+  P_.setZero();
 
   for (int i = 0; i < n_sig_; ++i) {
-    x_pred_ += weights_(i) * Xsig_pred_.col(i);
+    x_ += weights_(i) * Xsig_pred_.col(i);
   }
 
+  std::cout << "X_pred:\n" << x_ << "\n\n";
+
+  MatrixPhiGuard(x_, kState::yaw);
+
   for (int i = 0; i < n_sig_; ++i) {
-    VectorXd delta_x = Xsig_pred_.col(i) - x_pred_;
+    VectorXd delta_x = Xsig_pred_.col(i) - x_;
     phiGuard(delta_x(kState::yaw));
-    P_pred_ += weights_(i) * delta_x * delta_x.transpose();
+    P_ += weights_(i) * delta_x * delta_x.transpose();
   }
+  std::cout << "P_pred:\n" << P_ << "\n\n";
+
 }
 
 void UKF::UpdateLidar(MeasurementPackage &meas_package) {
@@ -210,9 +228,95 @@ void UKF::UpdateRadar(MeasurementPackage &meas_package) {
    * covariance, P_.
    * You can also calculate the radar NIS, if desired.
    */
+  int n_z = 3;
+
+  // create matrix for sigma points in measurement space
+  MatrixXd Zsig = MatrixXd::Zero(n_z, n_sig_);
+
+  // mean predicted measurement
+  VectorXd z_pred = VectorXd::Zero(n_z);
+
+  // measurement covariance matrix S
+  MatrixXd S = MatrixXd::Zero(n_z, n_z);
+
+  // transform sigma points into measurement space
+  for (int i = 0; i < n_sig_; ++i) {
+    double px = Xsig_pred_(kState::px, i);
+    double py = Xsig_pred_(kState::py, i);
+    double v = Xsig_pred_(kState::v, i);
+    double yaw = Xsig_pred_(kState::yaw, i);
+    double yawd = Xsig_pred_(kState::yawd, i);
+
+    Zsig(kRadar::r, i) = sqrt(px * px + py * py);
+    Zsig(kRadar::phi, i) = atan2(py, px);
+    Zsig(kRadar::rd, i) =
+        (px * cos(yaw) * v + py * sin(yaw) * v) / Zsig(kRadar::r, i);
+  }
+
+  // calculate mean predicted measurement
+  for (int i = 0; i < n_sig_; ++i) {
+    z_pred += weights_(i) * Zsig.col(i);
+  }
+
+  MatrixPhiGuard(z_pred, kRadar::phi);
+
+  // calculate innovation covariance matrix S
+  for (int i = 0; i < n_sig_; ++i) {
+    VectorXd z_diff = Zsig.col(i) - z_pred;
+    MatrixPhiGuard(z_diff, kRadar::phi);
+    S += weights_(i) * z_diff * z_diff.transpose();
+  }
+
+  MatrixXd R = MatrixXd::Zero(n_z, n_z);
+  R(0, 0) = std_radr_ * std_radr_;
+  R(1, 1) = std_radphi_ * std_radphi_;
+  R(2, 2) = std_radrd_ * std_radrd_;
+
+  S += R;
+
+  // create matrix for cross correlation Tc
+  MatrixXd Tc = MatrixXd::Zero(n_x_, n_z);
+
+  // calculate cross correlation matrix
+  for (int i = 0; i < n_sig_; ++i) {
+    VectorXd z_diff = Zsig.col(i) - z_pred;
+    MatrixPhiGuard(z_diff, kRadar::phi);
+    VectorXd x_diff = Xsig_pred_.col(i) - x_;
+    MatrixPhiGuard(x_diff, kState::yaw);
+    Tc += weights_(i) * x_diff * z_diff.transpose();
+  }
+
+  // calculate Kalman gain K;
+  MatrixXd K = Tc * S.inverse();
+
+  VectorXd z = meas_package.raw_measurements_;
+  MatrixPhiGuard(z, kRadar::phi);
+
+  // update state mean and covariance matrix
+  x_ += K * (z - z_pred);
+  P_ -= K * S * K.transpose();
+
+  std::cout << "K:\n" << K << "\n\n";
+  std::cout << "z:\n" << z << "\n\n";
+  std::cout << "z_pred:\n" << z_pred << "\n\n";
+  std::cout << "updated x_:\n" << x_ << "\n\n";
+  std::cout << std::endl;
 }
 
 void UKF::phiGuard(double &phi) {
-  while (phi > M_PI) phi -= 2.0 * M_PI;
-  while (phi < -1 * M_PI) phi += 2.0 * M_PI;
+  while (phi > M_PI) {
+    phi -= 2.0 * M_PI;
+  }
+
+  while (phi < -1 * M_PI) {
+    phi += 2.0 * M_PI;
+  }
 }
+
+void UKF::MatrixPhiGuard(MatrixXd &mtx, int rowPos) {
+  for (int i = 0; i < mtx.cols(); ++i) {
+    phiGuard(mtx(rowPos, i));
+  }
+}
+
+void UKF::MatrixPhiGuard(VectorXd &vec, int rowPos) { phiGuard(vec(rowPos)); }
