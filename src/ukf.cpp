@@ -1,5 +1,7 @@
-#include "ukf.h"
+#include <iostream>
+
 #include "Eigen/Dense"
+#include "ukf.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -15,11 +17,10 @@ UKF::UKF() {
   use_radar_ = true;
 
   // initial state vector
-  x_ = VectorXd(5);
+  x_ = VectorXd::Zero(5);
 
   // initial covariance matrix
-  P_ = MatrixXd(5, 5);
-  P_.setIdentity();
+  P_ = MatrixXd::Identity(5, 5);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
   std_a_ = 15;
@@ -57,9 +58,9 @@ UKF::UKF() {
   n_aug_ = 7;
   n_sig_ = 2 * n_aug_ + 1;
   lambda_ = 3 - n_aug_;
-  Xsig_pred_ = MatrixXd(n_x_, n_sig_);
+  Xsig_pred_ = MatrixXd::Zero(n_x_, n_sig_);
 
-  weights_ = VectorXd(n_sig_);
+  weights_ = VectorXd::Zero(n_sig_);
   weights_(0) = lambda_ / (lambda_ + n_aug_);
   double weightNonZero = 1 / (2 * (lambda_ + n_aug_));
   for (int i = 1; i < weights_.size(); ++i) {
@@ -102,7 +103,8 @@ void UKF::ProcessMeasurement(MeasurementPackage &meas_package) {
     return;
   }
 
-  double dt = meas_package.timestamp_ - time_us_;
+  double dt = (double)(meas_package.timestamp_ - time_us_) / 1000000.0;
+  time_us_ = meas_package.timestamp_;
   this->Prediction(dt);
 
   switch (meas_package.sensor_type_) {
@@ -123,18 +125,17 @@ void UKF::Prediction(double dt) {
    */
 
   /////////////////////////// Find Sigma Points ///////////////////////////
-
-  VectorXd x_aug(n_aug_);
+  VectorXd x_aug = VectorXd::Zero(n_aug_);
   x_aug.head(n_x_) = x_;
 
-  MatrixXd P_aug(n_aug_, n_aug_);
+  MatrixXd P_aug = MatrixXd::Zero(n_aug_, n_aug_);
   P_aug.topLeftCorner(n_x_, n_x_) = P_;
   P_aug(n_x_, n_x_) = std_a_ * std_a_;
   P_aug(n_x_ + 1, n_x_ + 1) = std_yawdd_ * std_yawdd_;
 
   MatrixXd P_aug_sqrt = P_aug.llt().matrixL();
 
-  MatrixXd Xsig_aug(n_aug_, n_sig_);
+  MatrixXd Xsig_aug = MatrixXd::Zero(n_aug_, n_sig_);
   Xsig_aug.col(0) = x_aug;
   for (int i = 0; i < n_aug_; ++i) {
     VectorXd secondTerm = sqrt(lambda_ + n_aug_) * P_aug_sqrt.col(i);
@@ -153,10 +154,10 @@ void UKF::Prediction(double dt) {
     double nu_yawdd = Xsig_aug(kState::nu_yawdd, i);
 
     // incremental state change vector
-    VectorXd delta = VectorXd(n_x_);
+    VectorXd delta = VectorXd::Zero(n_x_);
 
     // process noise vector
-    VectorXd nu = VectorXd(n_x_);
+    VectorXd nu = VectorXd::Zero(n_x_);
 
     nu(kState::px) = 0.5 * dt * dt * cos(yaw) * nu_a;
     nu(kState::py) = 0.5 * dt * dt * sin(yaw) * nu_a;
@@ -164,7 +165,7 @@ void UKF::Prediction(double dt) {
     nu(kState::yaw) = 0.5 * dt * dt * nu_yawdd;
     nu(kState::yawd) = dt * nu_yawdd;
 
-    if (fabs(yawd) < 0.00001) {
+    if (fabs(yawd) < 0.01) {
       delta(kState::px) = v * cos(yaw) * dt;
       delta(kState::py) = v * sin(yaw) * dt;
     } else {
@@ -175,7 +176,21 @@ void UKF::Prediction(double dt) {
     delta(kState::yaw) = yawd * dt;
     delta(kState::yawd) = 0;
 
-    Xsig_pred_.col(i) += delta + nu;
+    Xsig_pred_.col(i) = Xsig_aug.block(0, i, n_x_, 1) + delta + nu;
+  }
+
+  /////////////////////// Find Sigma mean and covariance /////////////////////
+  x_pred_ = VectorXd::Zero(n_x_);
+  P_pred_ = MatrixXd::Zero(n_x_, n_x_);
+
+  for (int i = 0; i < n_sig_; ++i) {
+    x_pred_ += weights_(i) * Xsig_pred_.col(i);
+  }
+
+  for (int i = 0; i < n_sig_; ++i) {
+    VectorXd delta_x = Xsig_pred_.col(i) - x_pred_;
+    phiGuard(delta_x(kState::yaw));
+    P_pred_ += weights_(i) * delta_x * delta_x.transpose();
   }
 }
 
@@ -198,6 +213,6 @@ void UKF::UpdateRadar(MeasurementPackage &meas_package) {
 }
 
 void UKF::phiGuard(double &phi) {
-  while (phi > M_PI) phi -= M_PI;
-  while (phi < -1 * M_PI) phi += M_PI;
+  while (phi > M_PI) phi -= 2.0 * M_PI;
+  while (phi < -1 * M_PI) phi += 2.0 * M_PI;
 }

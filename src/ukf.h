@@ -64,6 +64,12 @@ class UKF {
   // state covariance matrix
   Eigen::MatrixXd P_;
 
+  // state vector after prediction step
+  Eigen::VectorXd x_pred_;
+
+  // state covariance matrix after prediction step
+  Eigen::MatrixXd P_pred_;
+
   // predicted sigma points matrix
   Eigen::MatrixXd Xsig_pred_;
 
@@ -107,28 +113,13 @@ class UKF {
   double lambda_;
 
   // enum for state matrix of vehicle
-  enum kState{
-    px,
-    py,
-    v,
-    yaw,
-    yawd,
-    nu_a,
-    nu_yawdd
-  };
+  enum kState { px, py, v, yaw, yawd, nu_a, nu_yawdd };
 
   // enum for lidar measurement points
-  enum kLidar{
-    x,
-    y
-  };
+  enum kLidar { x, y };
 
   // enum for radar measurement points
-  enum kRadar{
-    r,
-    phi,
-    rd
-  };
+  enum kRadar { r, phi, rd };
 };
 
 #endif  // UKF_H
